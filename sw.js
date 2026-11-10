@@ -1,7 +1,5 @@
-const CACHE = 'nosso-dia-v3';
+const CACHE = 'nosso-dia-v4';
 const PRECACHE = [
-  './',
-  './index.html',
   './style.css',
   './script.js',
   './manifest.json',
@@ -18,11 +16,11 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)));
+    await Promise.all(keys.map((key) => (key === CACHE ? null : caches.delete(key))));
     try {
       await self.clients.claim();
     } catch {
-      // Ignora corrida entre workers durante a ativação
+      // Ignora corrida entre workers
     }
   })());
 });
@@ -34,6 +32,13 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.pathname.startsWith('/api/')) return;
 
+  // HTML e o próprio SW sempre da rede, sem cache antigo
+  const isHTML = request.mode === 'navigate' || (request.headers.get('accept') || '').includes('text/html');
+  if (isHTML || url.pathname.endsWith('/sw.js')) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
   event.respondWith(
     fetch(request)
       .then((response) => {
@@ -43,7 +48,7 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(request).then((cached) => cached || caches.match('./index.html')))
+      .catch(() => caches.match(request))
   );
 });
 
