@@ -8,8 +8,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Nosso Dia">
     <title>Nosso Amor</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="./style.css">
     <link rel="manifest" href="./manifest.json">
+    <link rel="icon" href="./icons/icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="./icons/icon-192.png">
 </head>
 <body>
@@ -40,8 +41,8 @@
                             Seu navegador não suporta áudio.
                         </audio>
                         <div class="controls">
-                            <button onclick="musicaAnterior()">⏮️</button>
-                            <button onclick="proximaMusica()">⏭️</button>
+                            <button id="btn-musica-anterior" type="button" aria-label="Música anterior">⏮️</button>
+                            <button id="btn-proxima-musica" type="button" aria-label="Próxima música">⏭️</button>
                         </div>
                     </div>
                 </div>
@@ -53,6 +54,6 @@
         <button id="btn-install" type="button">Adicionar</button>
         <button id="btn-install-fechar" type="button" class="pwa-install-fechar">Agora não</button>
     </div>
-    <script src="script.js"></script>
+    <script src="./script.js"></script>
 </body>
 </html>

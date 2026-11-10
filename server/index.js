@@ -99,6 +99,26 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '32kb' }));
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "media-src 'self'",
+      "font-src 'self' data:",
+      "connect-src 'self'",
+      "manifest-src 'self'",
+      "worker-src 'self'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'self'"
+    ].join('; ')
+  );
+  next();
+});
 app.use(express.static(root));
 
 app.get('/api/vapid-public-key', (_req, res) => {

@@ -65,10 +65,8 @@ setInterval(atualizarContador, 1000); // Atualiza o contador a cada segundo
 // Reprodutor de música
 const player = document.getElementById('player');
 const musicas = [
-    './Musc/Pra sempre.mp3',
-    './Musc/O que.mp3',
-    './Music/Natiruts - Você É Linda (Acústico TV Natiruts).mp3'
-    // Adicione mais músicas aqui
+    './musicas/Pra_sempre.mp3',
+    './musicas/O_que.mp3'
 ];
 let musicaIndex = 0;
 
@@ -79,19 +77,20 @@ function carregarMusica(index) {
 function proximaMusica() {
     musicaIndex = (musicaIndex + 1) % musicas.length;
     carregarMusica(musicaIndex);
-    player.play();
+    player.play().catch(() => {});
 }
 
 function musicaAnterior() {
     musicaIndex = (musicaIndex - 1 + musicas.length) % musicas.length;
     carregarMusica(musicaIndex);
-    player.play();
+    player.play().catch(() => {});
 }
 
-carregarMusica(musicaIndex); // Carrega a primeira música ao iniciar
+carregarMusica(musicaIndex);
 
-// Adiciona um event listener para quando a música terminar
 player.addEventListener('ended', proximaMusica);
+document.getElementById('btn-musica-anterior')?.addEventListener('click', musicaAnterior);
+document.getElementById('btn-proxima-musica')?.addEventListener('click', proximaMusica);
 
 function urlBase64ParaUint8Array(base64String) {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
