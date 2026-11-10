@@ -11,13 +11,10 @@ function nextSlide() {
     showSlide(currentSlide);
 }
 
-// Mostra o primeiro slide inicialmente
 showSlide(currentSlide);
+setInterval(nextSlide, 5000);
 
-setInterval(nextSlide, 5000); // Troca de slide a cada 5 segundos
-
-// Contador de tempo juntos
-const dataInicio = new Date('2023-06-12T00:00:00'); // Data de início do relacionamento: 12/06/2023
+const dataInicio = new Date('2023-06-12T00:00:00');
 const contadorElement = document.getElementById('contador');
 
 function atualizarContador() {
@@ -29,7 +26,7 @@ function atualizarContador() {
     const dias = Math.floor(diferenca / (1000 * 60 * 60 * 24));
     const horas = Math.floor((diferenca % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutos = Math.floor((diferenca % (1000 * 60 * 60)) / (1000 * 60));
-    const segundos = Math.floor((diferenca % (1000 * 60)) / 1000);
+    const segundos = Math.floor((diferenca % (1000 * 60 * 60)) / 1000);
 
     contadorElement.innerHTML = `
         <div class="contador-item">
@@ -60,9 +57,8 @@ function atualizarContador() {
 }
 
 atualizarContador();
-setInterval(atualizarContador, 1000); // Atualiza o contador a cada segundo
+setInterval(atualizarContador, 1000);
 
-// Reprodutor de música
 const player = document.getElementById('player');
 const musicas = [
     './musicas/Pra_sempre.mp3',
@@ -87,7 +83,6 @@ function musicaAnterior() {
 }
 
 carregarMusica(musicaIndex);
-
 player.addEventListener('ended', proximaMusica);
 document.getElementById('btn-musica-anterior')?.addEventListener('click', musicaAnterior);
 document.getElementById('btn-proxima-musica')?.addEventListener('click', proximaMusica);
@@ -129,8 +124,9 @@ const btnAtivarNotif = document.getElementById('btn-ativar-notif');
 const btnNotifFechar = document.getElementById('btn-notif-fechar');
 let promptInstalacao = null;
 let pedindoNotificacao = false;
+let vapidPublicKey = null;
+let swPronto = null;
 
-// Limpa flag antiga que podia travar o pedido sem o usuário ter visto o diálogo
 try { localStorage.removeItem('nosso-dia-notif-asked'); } catch {}
 
 function mostrarBannerPWA(texto, rotuloBotao) {
@@ -153,9 +149,27 @@ function ocultarBannerNotif() {
     notifBanner?.classList.add('hidden');
 }
 
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+function pushDisponivel() {
+    return 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
 }
+
+async function prepararPush() {
+    if (!('serviceWorker' in navigator)) return null;
+    swPronto = navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .then(() => navigator.serviceWorker.ready);
+    try {
+        const chave = await fetch('/api/vapid-public-key').then((res) => {
+            if (!res.ok) throw new Error('api');
+            return res.json();
+        });
+        vapidPublicKey = chave.publicKey;
+    } catch {
+        vapidPublicKey = null;
+    }
+    return swPronto;
+}
+
+prepararPush().catch(() => {});
 
 window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
@@ -218,43 +232,43 @@ btnInstallFechar?.addEventListener('click', () => {
     pwaInstall?.classList.add('hidden');
 });
 
-function pushDisponivel() {
-    return 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
-}
-
 async function registrarInscricao() {
-    await navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
-    const chave = await fetch('/api/vapid-public-key').then((res) => {
-        if (!res.ok) throw new Error('api');
-        return res.json();
-    });
+    if (!vapidPublicKey) await prepararPush();
+    if (!vapidPublicKey) throw new Error('vapid');
 
-    const registro = await navigator.serviceWorker.ready;
+    const registro = await (swPronto || navigator.serviceWorker.ready);
+    const atual = await registro.pushManager.getSubscription();
+    if (atual) {
+        try { await atual.unsubscribe(); } catch {}
+    }
+
     const inscricao = await registro.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ParaUint8Array(chave.publicKey)
+        applicationServerKey: urlBase64ParaUint8Array(vapidPublicKey)
     });
 
     const resposta = await fetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(inscricao)
+        body: JSON.stringify(inscricao.toJSON())
     });
     if (!resposta.ok) throw new Error('subscribe');
+    return resposta.json();
 }
 
 async function ativarNotificacoesComToque() {
     if (pedindoNotificacao) return;
     pedindoNotificacao = true;
-    btnAtivarNotif && (btnAtivarNotif.disabled = true);
+    if (btnAtivarNotif) btnAtivarNotif.disabled = true;
 
     try {
+        if (!ehPWA() && ehIOS()) {
+            mostrarBannerNotif('No iPhone, feche o Safari e abra pelo ícone “Nosso Dia” na tela inicial.');
+            return;
+        }
+
         if (!pushDisponivel()) {
-            if (ehIOS() && !ehPWA()) {
-                mostrarBannerNotif('No iPhone, abra o Nosso Dia pelo ícone da tela inicial para liberar as notificações.');
-            } else {
-                mostrarBannerNotif('Este aparelho/navegador ainda não suporta os recados por notificação.');
-            }
+            mostrarBannerNotif('Este aparelho ainda não liberou Push. Confirme iOS 16.4+ e abra pelo ícone da tela inicial.');
             return;
         }
 
@@ -262,19 +276,22 @@ async function ativarNotificacoesComToque() {
         if (permissao !== 'granted') {
             if (notifTexto) {
                 notifTexto.textContent = permissao === 'denied'
-                    ? 'Permissão bloqueada. Em Ajustes → Nosso Dia → Notificações, ative e abra o app de novo.'
+                    ? 'Permissão bloqueada. Em Ajustes → Notificações → Nosso Dia, ative e abra o app de novo.'
                     : 'Sem permissão ainda. Toque de novo em “Ativar recadinhos”.';
             }
             return;
         }
 
-        await registrarInscricao();
+        const info = await registrarInscricao();
         localStorage.setItem(NOTIF_DISMISS_KEY, '1');
         ocultarBannerNotif();
-        if (notifTexto) notifTexto.textContent = 'Pronto! Os recadinhos estão ativados.';
-    } catch {
         if (notifTexto) {
-            notifTexto.textContent = 'Não deu para ativar agora. Feche o app, abra pelo ícone da tela inicial e tente de novo.';
+            notifTexto.textContent = `Pronto! Recadinhos ativados${info?.host ? ` (${info.host})` : ''}.`;
+        }
+    } catch (erro) {
+        console.error(erro);
+        if (notifTexto) {
+            notifTexto.textContent = 'Não deu para ativar agora. Feche o app, abra pelo ícone da tela inicial e toque de novo em Ativar.';
         }
         mostrarBannerNotif();
     } finally {
@@ -291,10 +308,7 @@ async function verificarNotificacoes() {
         return;
     }
 
-    if (!ehPWA() && ehIOS()) {
-        // No Safari normal o iOS não mostra o diálogo de push
-        return;
-    }
+    if (!ehPWA() && ehIOS()) return;
 
     if (!pushDisponivel()) {
         if (ehPWA()) {
@@ -315,12 +329,10 @@ async function verificarNotificacoes() {
         return;
     }
 
-    // iOS (e vários Android) só mostram o diálogo depois de um toque no botão
     mostrarBannerNotif('Toque abaixo para permitir os recadinhos diários.');
 }
 
 btnAtivarNotif?.addEventListener('click', ativarNotificacoesComToque);
-
 btnNotifFechar?.addEventListener('click', () => {
     localStorage.setItem(NOTIF_DISMISS_KEY, '1');
     ocultarBannerNotif();

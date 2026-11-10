@@ -19,6 +19,7 @@ const HOUR = Number(process.env.NOTIFY_HOUR || 8);
 const MINUTE = Number(process.env.NOTIFY_MINUTE || 0);
 const TZ = process.env.TZ || 'America/Sao_Paulo';
 const EXTRA_HOJE = process.env.NOTIFY_EXTRA_TODAY || '';
+const PUBLIC_URL = (process.env.PUBLIC_URL || 'https://amor.chatia.qzz.io').replace(/\/$/, '');
 
 function lerJson(caminho, fallback) {
   try {
@@ -84,26 +85,56 @@ function agoraNoFuso() {
   return new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
 }
 
+function montarPayload(texto) {
+  // Inclui campos do Declarative Web Push (Safari 18.4+) e o JSON clássico do nosso SW
+  return JSON.stringify({
+    web_push: 8030,
+    title: 'Thallyson ❤️ Isla',
+    body: texto,
+    navigate: `${PUBLIC_URL}/?source=pwa`,
+    url: `${PUBLIC_URL}/?source=pwa`,
+    tag: 'nosso-dia-recado',
+    icon: `${PUBLIC_URL}/icons/icon-192.png`
+  });
+}
+
+function hostDoEndpoint(endpoint) {
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return 'desconhecido';
+  }
+}
+
 async function enviarParaTodos({ forcar = false, rotulo = 'Push' } = {}) {
   const inscricoes = lerJson(subsPath, []);
   const recado = await mensagemDoDia({ forcar });
-  const payload = JSON.stringify({
-    title: 'Thallyson ❤️ Isla',
-    body: recado.texto,
-    url: '/?source=pwa'
-  });
+  const payload = montarPayload(recado.texto);
 
+  let ok = 0;
+  let falhas = 0;
   const validas = [];
-  for (const inscricao of inscricoes) {
-    try {
-      await webpush.sendNotification(inscricao, payload, { TTL: 60 * 60, urgency: 'high' });
-      validas.push(inscricao);
-    } catch (erro) {
-      const codigo = erro.statusCode;
-      const corpo = erro.body ? String(erro.body).slice(0, 300) : '';
-      console.error('Falha ao enviar push:', codigo || erro.message, corpo);
 
-      // 403/404/410 = inscrição inválida ou VAPID rejeitado — remove para forçar nova ativação
+  console.log(`${rotulo}: inscritos=${inscricoes.length}`);
+
+  for (const inscricao of inscricoes) {
+    const host = hostDoEndpoint(inscricao.endpoint);
+    try {
+      const resposta = await webpush.sendNotification(inscricao, payload, {
+        TTL: 60 * 60,
+        urgency: 'high',
+        contentEncoding: 'aes128gcm'
+      });
+      ok += 1;
+      validas.push(inscricao);
+      console.log(`${rotulo}: OK -> ${host} status=${resposta?.statusCode || 201}`);
+    } catch (erro) {
+      falhas += 1;
+      const codigo = erro.statusCode;
+      const corpo = erro.body ? String(erro.body).slice(0, 400) : '';
+      console.error(`${rotulo}: FALHA -> ${host}`, codigo || erro.message, corpo);
+
+      // 403/404/410 = inscrição inválida ou VAPID rejeitado
       if (codigo !== 403 && codigo !== 404 && codigo !== 410) {
         validas.push(inscricao);
       }
@@ -111,8 +142,16 @@ async function enviarParaTodos({ forcar = false, rotulo = 'Push' } = {}) {
   }
 
   salvarInscricoes(validas);
-  const resultado = { enviadas: validas.length, texto: recado.texto, origem: recado.origem, rotulo };
-  console.log(`${rotulo}:`, resultado);
+  const resultado = {
+    rotulo,
+    inscritos: inscricoes.length,
+    enviadas: ok,
+    falhas,
+    restantes: validas.length,
+    texto: recado.texto,
+    origem: recado.origem
+  };
+  console.log(`${rotulo}: resumo`, resultado);
   return resultado;
 }
 
@@ -159,7 +198,13 @@ app.get('/api/vapid-public-key', (_req, res) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
+  const inscricoes = lerJson(subsPath, []);
+  res.json({
+    ok: true,
+    inscritos: inscricoes.length,
+    hosts: inscricoes.map((item) => hostDoEndpoint(item.endpoint)),
+    vapidSubject
+  });
 });
 
 app.post('/api/subscribe', (req, res) => {
@@ -168,31 +213,31 @@ app.post('/api/subscribe', (req, res) => {
     return res.status(400).json({ erro: 'Inscrição inválida.' });
   }
 
-  const lista = lerJson(subsPath, []);
-  const jaExiste = lista.some((item) => item.endpoint === inscricao.endpoint);
-  if (!jaExiste) {
-    lista.push(inscricao);
-    salvarInscricoes(lista);
-  }
+  const lista = lerJson(subsPath, []).filter((item) => item.endpoint !== inscricao.endpoint);
+  lista.push(inscricao);
+  salvarInscricoes(lista);
 
-  res.json({ ok: true, nova: !jaExiste });
+  console.log(`Nova inscrição salva: ${hostDoEndpoint(inscricao.endpoint)} (total=${lista.length})`);
+  res.json({ ok: true, inscritos: lista.length, host: hostDoEndpoint(inscricao.endpoint) });
 
   // Pequeno atraso ajuda no iOS logo após o subscribe
   setTimeout(() => {
-    webpush.sendNotification(inscricao, JSON.stringify({
-      title: 'Thallyson ❤️ Isla',
-      body: 'Pronto! Os recadinhos estão ativados. Um beijo por notificação todo dia.',
-      url: '/?source=pwa'
-    }), { TTL: 60 * 60, urgency: 'high' }).catch((erro) => {
+    webpush.sendNotification(
+      inscricao,
+      montarPayload('Pronto! Os recadinhos estão ativados. Um beijo por notificação todo dia.'),
+      { TTL: 60 * 60, urgency: 'high', contentEncoding: 'aes128gcm' }
+    ).then((resposta) => {
+      console.log(`Boas-vindas OK -> ${hostDoEndpoint(inscricao.endpoint)} status=${resposta?.statusCode || 201}`);
+    }).catch((erro) => {
       const codigo = erro.statusCode;
-      const corpo = erro.body ? String(erro.body).slice(0, 300) : '';
+      const corpo = erro.body ? String(erro.body).slice(0, 400) : '';
       console.error('Falha no push de boas-vindas:', codigo || erro.message, corpo);
       if (codigo === 403 || codigo === 404 || codigo === 410) {
         const limpa = lerJson(subsPath, []).filter((item) => item.endpoint !== inscricao.endpoint);
         salvarInscricoes(limpa);
       }
     });
-  }, 1500);
+  }, 1200);
 });
 
 app.post('/api/unsubscribe', (req, res) => {

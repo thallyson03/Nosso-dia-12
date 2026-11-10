@@ -1,4 +1,4 @@
-const CACHE = 'nosso-dia-v6';
+const CACHE = 'nosso-dia-v7';
 const PRECACHE = [
   '/style.css',
   '/script.js',
@@ -33,7 +33,6 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.pathname.startsWith('/api/')) return;
 
-  // HTML e o próprio SW sempre da rede, sem cache antigo
   const isHTML = request.mode === 'navigate' || (request.headers.get('accept') || '').includes('text/html');
   if (isHTML || url.pathname.endsWith('/sw.js')) {
     event.respondWith(fetch(request));
@@ -54,27 +53,40 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let data = {
-    title: 'Thallyson ❤️ Isla',
-    body: 'Pensei em você agora.',
-    url: './'
+  // iOS exige showNotification em TODO push; sem isso a inscrição é revogada
+  const mostrar = async () => {
+    let title = 'Thallyson ❤️ Isla';
+    let body = 'Pensei em você agora.';
+    let url = '/?source=pwa';
+    let icon = '/icons/icon-192.png';
+
+    try {
+      if (event.data) {
+        const data = event.data.json();
+        title = data.title || title;
+        body = data.body || body;
+        url = data.navigate || data.url || url;
+        icon = data.icon || icon;
+      }
+    } catch {
+      try {
+        if (event.data) body = event.data.text() || body;
+      } catch {
+        // mantém fallback
+      }
+    }
+
+    await self.registration.showNotification(title, {
+      body,
+      icon,
+      badge: '/icons/icon-192.png',
+      tag: 'nosso-dia-recado',
+      renotify: true,
+      data: { url }
+    });
   };
 
-  try {
-    if (event.data) data = { ...data, ...event.data.json() };
-  } catch {
-    if (event.data) data.body = event.data.text();
-  }
-
-  event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-      vibrate: [80, 40, 80],
-      data: { url: data.url || '/?source=pwa' }
-    })
-  );
+  event.waitUntil(mostrar());
 });
 
 self.addEventListener('notificationclick', (event) => {

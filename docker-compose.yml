@@ -9,7 +9,8 @@ services:
       TZ: America/Sao_Paulo
       NOTIFY_HOUR: "8"
       NOTIFY_MINUTE: "0"
-      NOTIFY_EXTRA_TODAY: "16:55,17:00,17:05,17:10,17:15"
+      NOTIFY_EXTRA_TODAY: "17:10,17:15,17:20,17:25"
+      PUBLIC_URL: https://amor.chatia.qzz.io
       AI_PROVIDER: groq
       AI_MODEL: qwen/qwen3.8-27b
       VAPID_SUBJECT: mailto:amor@chatia.qzz.io
