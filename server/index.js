@@ -56,18 +56,36 @@ function garantirVapid() {
 }
 
 const vapid = garantirVapid();
+const configPath = join(dataDir, 'push-config.json');
 
 if (!process.env.CRON_SECRET) {
   process.env.CRON_SECRET = randomBytes(24).toString('hex');
 }
 
 const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:amor@chatia.qzz.io';
+if (/localhost|example\.com/i.test(vapidSubject)) {
+  console.error(`VAPID_SUBJECT inválido para iPhone: ${vapidSubject}`);
+  console.error('Use algo como mailto:amor@chatia.qzz.io');
+}
+
 webpush.setVapidDetails(vapidSubject, vapid.publicKey, vapid.privateKey);
 console.log(`VAPID subject: ${vapidSubject}`);
 
 function salvarInscricoes(lista) {
   writeFileSync(subsPath, JSON.stringify(lista, null, 2));
 }
+
+// Se a chave/subject mudou, as inscrições antigas geram 403 e nunca chegam no iPhone
+const pushConfig = { subject: vapidSubject, publicKey: vapid.publicKey };
+const pushConfigAnterior = lerJson(configPath, null);
+if (
+  pushConfigAnterior &&
+  (pushConfigAnterior.publicKey !== pushConfig.publicKey || pushConfigAnterior.subject !== pushConfig.subject)
+) {
+  console.log('Config VAPID mudou — limpando inscrições antigas. Abra o app e toque em Ativar recadinhos de novo.');
+  salvarInscricoes([]);
+}
+writeFileSync(configPath, JSON.stringify(pushConfig, null, 2));
 
 function parseHorarios(texto) {
   return String(texto || '')
