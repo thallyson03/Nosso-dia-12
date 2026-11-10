@@ -1,17 +1,21 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#e63946">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Nosso Dia">
-    <title>Nosso Amor</title>
-    <link rel="stylesheet" href="./style.css">
-    <link rel="manifest" href="./manifest.json">
-    <link rel="icon" href="./icons/icon-192.png" type="image/png">
-    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+    <meta name="application-name" content="Nosso Dia">
+    <meta name="description" content="O nosso cantinho. Um recadinho de amor todos os dias.">
+    <title>Nosso Dia</title>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" sizes="180x180">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" sizes="192x192">
 </head>
 <body>
     <div class="container">
@@ -49,11 +53,11 @@
             </div>
         </div>
     </div>
-    <div id="pwa-install" class="pwa-install hidden">
-        <p>Adicione na tela inicial para receber os recados mesmo com o site fechado.</p>
-        <button id="btn-install" type="button">Adicionar</button>
+    <div id="pwa-install" class="pwa-install hidden" role="dialog" aria-live="polite">
+        <p id="pwa-install-texto">Adicione o Nosso Dia na tela inicial para abrir como app e receber os recados.</p>
+        <button id="btn-install" type="button">Adicionar à tela inicial</button>
         <button id="btn-install-fechar" type="button" class="pwa-install-fechar">Agora não</button>
     </div>
-    <script src="./script.js"></script>
+    <script src="/script.js"></script>
 </body>
 </html>

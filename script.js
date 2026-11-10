@@ -102,15 +102,25 @@ function urlBase64ParaUint8Array(base64String) {
 }
 
 function ehIOS() {
-    return /iphone|ipad|ipod/i.test(navigator.userAgent);
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function ehAndroid() {
+    return /android/i.test(navigator.userAgent);
 }
 
 function ehPWA() {
-    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    return window.matchMedia('(display-mode: standalone)').matches ||
+        window.matchMedia('(display-mode: fullscreen)').matches ||
+        window.navigator.standalone === true ||
+        new URLSearchParams(location.search).get('source') === 'pwa';
 }
 
 const NOTIF_ASKED_KEY = 'nosso-dia-notif-asked';
+const PWA_DISMISS_KEY = 'nosso-dia-pwa-dismiss';
 const pwaInstall = document.getElementById('pwa-install');
+const pwaInstallTexto = document.getElementById('pwa-install-texto');
 const btnInstall = document.getElementById('btn-install');
 const btnInstallFechar = document.getElementById('btn-install-fechar');
 let promptInstalacao = null;
@@ -124,34 +134,76 @@ function marcarPedidoNotificacao() {
     localStorage.setItem(NOTIF_ASKED_KEY, '1');
 }
 
+function mostrarBannerPWA(texto, rotuloBotao) {
+    if (!pwaInstall || ehPWA()) return;
+    if (localStorage.getItem(PWA_DISMISS_KEY) === '1') return;
+    if (texto && pwaInstallTexto) pwaInstallTexto.textContent = texto;
+    if (rotuloBotao && btnInstall) btnInstall.textContent = rotuloBotao;
+    pwaInstall.classList.remove('hidden');
+}
+
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
 }
 
 window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
     promptInstalacao = event;
-    if (pwaInstall && !ehPWA()) pwaInstall.classList.remove('hidden');
+    mostrarBannerPWA(
+        'Adicione o Nosso Dia na tela inicial para abrir como app e receber os recados.',
+        'Adicionar à tela inicial'
+    );
 });
 
-if (pwaInstall && ehIOS() && !ehPWA()) {
-    pwaInstall.classList.remove('hidden');
-    if (btnInstall) btnInstall.textContent = 'Como adicionar';
+window.addEventListener('appinstalled', () => {
+    localStorage.setItem(PWA_DISMISS_KEY, '1');
+    pwaInstall?.classList.add('hidden');
+    promptInstalacao = null;
+});
+
+if (!ehPWA()) {
+    if (ehIOS()) {
+        mostrarBannerPWA(
+            'No iPhone/iPad: toque em Compartilhar e depois em “Adicionar à Tela de Início”.',
+            'Ver como adicionar'
+        );
+    } else if (ehAndroid()) {
+        // Se o Chrome não disparar beforeinstallprompt, ainda orienta o usuário
+        setTimeout(() => {
+            if (!promptInstalacao) {
+                mostrarBannerPWA(
+                    'No Android: menu ⋮ do Chrome → “Adicionar à tela inicial” ou “Instalar app”.',
+                    'Como instalar'
+                );
+            }
+        }, 2500);
+    }
 }
 
 btnInstall?.addEventListener('click', async () => {
     if (promptInstalacao) {
         promptInstalacao.prompt();
-        await promptInstalacao.userChoice;
+        const escolha = await promptInstalacao.userChoice;
         promptInstalacao = null;
-        pwaInstall?.classList.add('hidden');
+        if (escolha?.outcome === 'accepted') {
+            localStorage.setItem(PWA_DISMISS_KEY, '1');
+            pwaInstall?.classList.add('hidden');
+        }
         return;
     }
 
-    pwaInstall.querySelector('p').textContent = 'No iPhone: toque em Compartilhar e depois em Adicionar à Tela de Início.';
+    if (ehIOS() && pwaInstallTexto) {
+        pwaInstallTexto.textContent = 'Safari → botão Compartilhar (quadrado com seta) → role e toque em “Adicionar à Tela de Início” → Adicionar.';
+        return;
+    }
+
+    if (pwaInstallTexto) {
+        pwaInstallTexto.textContent = 'Chrome → menu ⋮ → “Adicionar à tela inicial” ou “Instalar aplicativo”.';
+    }
 });
 
 btnInstallFechar?.addEventListener('click', () => {
+    localStorage.setItem(PWA_DISMISS_KEY, '1');
     pwaInstall?.classList.add('hidden');
 });
 
