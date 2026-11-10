@@ -15,11 +15,10 @@ const subsPath = join(dataDir, 'subscriptions.json');
 const vapidPath = join(dataDir, 'vapid.json');
 
 const PORT = Number(process.env.PORT || 3008);
-const HOUR = Number(process.env.NOTIFY_HOUR || 8);
-const MINUTE = Number(process.env.NOTIFY_MINUTE || 0);
 const TZ = process.env.TZ || 'America/Sao_Paulo';
 const EXTRA_HOJE = process.env.NOTIFY_EXTRA_TODAY || '';
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'https://amor.chatia.qzz.io').replace(/\/$/, '');
+const HORARIOS_PADRAO = '08:00,12:00,17:00,21:00';
 
 function lerJson(caminho, fallback) {
   try {
@@ -93,10 +92,36 @@ function parseHorarios(texto) {
     .map((item) => item.trim())
     .filter(Boolean)
     .map((item) => {
-      const [h, m] = item.split(':').map((n) => Number(n));
-      return { h, m };
+      const [h, m = 0] = item.split(':').map((n) => Number(n));
+      return { h, m: Number.isInteger(m) ? m : 0 };
     })
     .filter(({ h, m }) => Number.isInteger(h) && Number.isInteger(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59);
+}
+
+function horariosDiarios() {
+  if (process.env.NOTIFY_TIMES) return parseHorarios(process.env.NOTIFY_TIMES);
+  if (process.env.NOTIFY_HOUR != null || process.env.NOTIFY_MINUTE != null) {
+    return parseHorarios(
+      `${process.env.NOTIFY_HOUR || 8}:${process.env.NOTIFY_MINUTE || 0}`
+    );
+  }
+  return parseHorarios(HORARIOS_PADRAO);
+}
+
+function formatarHorario({ h, m }) {
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function agendarHorariosDiarios(horarios) {
+  for (const horario of horarios) {
+    const label = formatarHorario(horario);
+    const expr = `${horario.m} ${horario.h} * * *`;
+    cron.schedule(expr, () => {
+      enviarParaTodos({ forcar: true, rotulo: `Push ${label}` })
+        .catch((erro) => console.error(`Erro no push ${label}:`, erro));
+    }, { timezone: TZ });
+    console.log(`Recado diário agendado: ${label} (${TZ})`);
+  }
 }
 
 function agoraNoFuso() {
@@ -242,7 +267,7 @@ app.post('/api/subscribe', (req, res) => {
   setTimeout(() => {
     webpush.sendNotification(
       inscricao,
-      montarPayload('Pronto! Os recadinhos estão ativados. Um beijo por notificação todo dia.'),
+      montarPayload('Pronto! Os recadinhos estão ativados. Vou te mandar um carinho às 8h, 12h, 17h e 21h.'),
       { TTL: 60 * 60, urgency: 'high', contentEncoding: 'aes128gcm' }
     ).then((resposta) => {
       console.log(`Boas-vindas OK -> ${hostDoEndpoint(inscricao.endpoint)} status=${resposta?.statusCode || 201}`);
@@ -275,22 +300,17 @@ app.post('/api/enviar', async (req, res) => {
   res.json(resultado);
 });
 
-const cronExpr = `${MINUTE} ${HOUR} * * *`;
-cron.schedule(cronExpr, () => {
-  enviarParaTodos({ rotulo: 'Push diário' })
-    .catch((erro) => console.error('Erro no push diário:', erro));
-}, { timezone: TZ });
-
+agendarHorariosDiarios(horariosDiarios());
 const extrasHoje = parseHorarios(EXTRA_HOJE);
 agendarExtrasDeHoje(extrasHoje);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Nosso Dia em http://0.0.0.0:${PORT}`);
-  console.log(`Recado diário às ${String(HOUR).padStart(2, '0')}:${String(MINUTE).padStart(2, '0')} (${TZ})`);
+  console.log(`Horários diários: ${horariosDiarios().map(formatarHorario).join(', ')} (${TZ})`);
   if (extrasHoje.length) {
-    console.log(`Extras de hoje: ${extrasHoje.map(({ h, m }) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`).join(', ')}`);
+    console.log(`Extras de hoje: ${extrasHoje.map(formatarHorario).join(', ')}`);
   }
   console.log(iaConfigurada()
-    ? 'Recados: IA gera um texto novo todo dia'
+    ? 'Recados: IA gera um texto novo a cada disparo'
     : 'Recados: lista reserva (defina AI_API_KEY no Coolify para usar IA)');
 });

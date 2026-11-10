@@ -7,9 +7,7 @@ services:
     environment:
       PORT: "3008"
       TZ: America/Sao_Paulo
-      NOTIFY_HOUR: "8"
-      NOTIFY_MINUTE: "0"
-      NOTIFY_EXTRA_TODAY: "17:15,17:20,17:25,17:30"
+      NOTIFY_TIMES: "08:00,12:00,17:00,21:00"
       PUBLIC_URL: https://amor.chatia.qzz.io
       AI_PROVIDER: groq
       AI_MODEL: qwen/qwen3.8-27b

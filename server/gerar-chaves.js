@@ -20,8 +20,7 @@ VAPID_PUBLIC_KEY=${vapid.publicKey}
 VAPID_PRIVATE_KEY=${vapid.privateKey}
 VAPID_SUBJECT=mailto:amor@chatia.qzz.io
 CRON_SECRET=${secret}
-NOTIFY_HOUR=8
-NOTIFY_MINUTE=0
+NOTIFY_TIMES=08:00,12:00,17:00,21:00
 TZ=America/Sao_Paulo
 AI_PROVIDER=groq
 AI_API_KEY=
@@ -30,4 +29,4 @@ AI_MODEL=qwen/qwen3.8-27b
 
 writeFileSync(envPath, env);
 console.log('Chaves criadas em server/.env');
-console.log('Horário padrão do recado: 08:00 (America/Sao_Paulo)');
+console.log('Horários padrão: 08:00, 12:00, 17:00, 21:00 (America/Sao_Paulo)');
