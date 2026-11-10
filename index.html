@@ -3,8 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#e63946">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Nosso Dia">
     <title>Nosso Amor</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
 </head>
 <body>
     <div class="container">
@@ -41,6 +47,11 @@
                 </div>
             </div>
         </div>
+    </div>
+    <div id="pwa-install" class="pwa-install hidden">
+        <p>Adicione na tela inicial para receber os recados mesmo com o site fechado.</p>
+        <button id="btn-install" type="button">Adicionar</button>
+        <button id="btn-install-fechar" type="button" class="pwa-install-fechar">Agora não</button>
     </div>
     <script src="script.js"></script>
 </body>

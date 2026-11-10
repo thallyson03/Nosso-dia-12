@@ -92,3 +92,134 @@ carregarMusica(musicaIndex); // Carrega a primeira música ao iniciar
 
 // Adiciona um event listener para quando a música terminar
 player.addEventListener('ended', proximaMusica);
+
+function urlBase64ParaUint8Array(base64String) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(base64);
+    const output = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
+    return output;
+}
+
+function ehIOS() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+function ehPWA() {
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+const NOTIF_ASKED_KEY = 'nosso-dia-notif-asked';
+const pwaInstall = document.getElementById('pwa-install');
+const btnInstall = document.getElementById('btn-install');
+const btnInstallFechar = document.getElementById('btn-install-fechar');
+let promptInstalacao = null;
+let pedindoNotificacao = false;
+
+function jaPediuNotificacao() {
+    return localStorage.getItem(NOTIF_ASKED_KEY) === '1';
+}
+
+function marcarPedidoNotificacao() {
+    localStorage.setItem(NOTIF_ASKED_KEY, '1');
+}
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
+window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    promptInstalacao = event;
+    if (pwaInstall && !ehPWA()) pwaInstall.classList.remove('hidden');
+});
+
+if (pwaInstall && ehIOS() && !ehPWA()) {
+    pwaInstall.classList.remove('hidden');
+    if (btnInstall) btnInstall.textContent = 'Como adicionar';
+}
+
+btnInstall?.addEventListener('click', async () => {
+    if (promptInstalacao) {
+        promptInstalacao.prompt();
+        await promptInstalacao.userChoice;
+        promptInstalacao = null;
+        pwaInstall?.classList.add('hidden');
+        return;
+    }
+
+    pwaInstall.querySelector('p').textContent = 'No iPhone: toque em Compartilhar e depois em Adicionar à Tela de Início.';
+});
+
+btnInstallFechar?.addEventListener('click', () => {
+    pwaInstall?.classList.add('hidden');
+});
+
+function pushDisponivel() {
+    return 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
+}
+
+async function registrarInscricao() {
+    const chave = await fetch('/api/vapid-public-key').then((res) => {
+        if (!res.ok) throw new Error('api');
+        return res.json();
+    });
+
+    const registro = await navigator.serviceWorker.ready;
+    const inscricao = await registro.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ParaUint8Array(chave.publicKey)
+    });
+
+    await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inscricao)
+    });
+}
+
+async function pedirNotificacaoUmaVez() {
+    if (pedindoNotificacao || !pushDisponivel()) return;
+    if (ehIOS() && !ehPWA()) return;
+    if (Notification.permission === 'denied') {
+        marcarPedidoNotificacao();
+        return;
+    }
+
+    if (Notification.permission === 'granted') {
+        marcarPedidoNotificacao();
+        try { await registrarInscricao(); } catch {}
+        return;
+    }
+
+    if (jaPediuNotificacao()) return;
+
+    pedindoNotificacao = true;
+    try {
+        const permissao = await Notification.requestPermission();
+        marcarPedidoNotificacao();
+        if (permissao === 'granted') await registrarInscricao();
+    } catch {
+        marcarPedidoNotificacao();
+    } finally {
+        pedindoNotificacao = false;
+    }
+}
+
+function aguardarPrimeiroToque() {
+    const tentar = () => {
+        window.removeEventListener('pointerdown', tentar);
+        window.removeEventListener('keydown', tentar);
+        pedirNotificacaoUmaVez();
+    };
+    window.addEventListener('pointerdown', tentar, { once: true });
+    window.addEventListener('keydown', tentar, { once: true });
+}
+
+pedirNotificacaoUmaVez().then(() => {
+    if (!pushDisponivel()) return;
+    if (!jaPediuNotificacao() && Notification.permission === 'default') {
+        aguardarPrimeiroToque();
+    }
+});

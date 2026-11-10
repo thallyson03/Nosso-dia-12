@@ -130,6 +130,43 @@ h1 {
     color: #fff;
 }
 
+.pwa-install {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 16px;
+    padding: 16px;
+    z-index: 20;
+}
+
+.pwa-install p {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: #ddd;
+}
+
+.pwa-install button {
+    background: #e63946;
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 8px 14px;
+    margin-right: 8px;
+    cursor: pointer;
+}
+
+.pwa-install-fechar {
+    background: transparent !important;
+    color: #aaa !important;
+}
+
+.hidden {
+    display: none;
+}
+
 /* Media queries para responsividade */
 
 /* Para telas menores que 600px (celulares) */

@@ -1,0 +1,10 @@
+.git
+.gitignore
+**/.env
+server/.env
+server/data
+server/node_modules
+node_modules
+*.md
+server/nginx.conf.example
+server/nosso-dia.service
