@@ -18,7 +18,7 @@ const secret = randomBytes(24).toString('hex');
 const env = `PORT=3008
 VAPID_PUBLIC_KEY=${vapid.publicKey}
 VAPID_PRIVATE_KEY=${vapid.privateKey}
-VAPID_SUBJECT=mailto:nosso-dia@localhost
+VAPID_SUBJECT=mailto:amor@chatia.qzz.io
 CRON_SECRET=${secret}
 NOTIFY_HOUR=8
 NOTIFY_MINUTE=0

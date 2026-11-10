@@ -60,11 +60,9 @@ if (!process.env.CRON_SECRET) {
   process.env.CRON_SECRET = randomBytes(24).toString('hex');
 }
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT || 'mailto:nosso-dia@localhost',
-  vapid.publicKey,
-  vapid.privateKey
-);
+const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:amor@chatia.qzz.io';
+webpush.setVapidDetails(vapidSubject, vapid.publicKey, vapid.privateKey);
+console.log(`VAPID subject: ${vapidSubject}`);
 
 function salvarInscricoes(lista) {
   writeFileSync(subsPath, JSON.stringify(lista, null, 2));
@@ -98,12 +96,16 @@ async function enviarParaTodos({ forcar = false, rotulo = 'Push' } = {}) {
   const validas = [];
   for (const inscricao of inscricoes) {
     try {
-      await webpush.sendNotification(inscricao, payload);
+      await webpush.sendNotification(inscricao, payload, { TTL: 60 * 60, urgency: 'high' });
       validas.push(inscricao);
     } catch (erro) {
-      if (erro.statusCode !== 404 && erro.statusCode !== 410) {
+      const codigo = erro.statusCode;
+      const corpo = erro.body ? String(erro.body).slice(0, 300) : '';
+      console.error('Falha ao enviar push:', codigo || erro.message, corpo);
+
+      // 403/404/410 = inscrição inválida ou VAPID rejeitado — remove para forçar nova ativação
+      if (codigo !== 403 && codigo !== 404 && codigo !== 410) {
         validas.push(inscricao);
-        console.error('Falha ao enviar push:', erro.statusCode || erro.message);
       }
     }
   }
@@ -175,11 +177,22 @@ app.post('/api/subscribe', (req, res) => {
 
   res.json({ ok: true, nova: !jaExiste });
 
-  webpush.sendNotification(inscricao, JSON.stringify({
-    title: 'Thallyson ❤️ Isla',
-    body: 'Pronto. A partir de amanhã, um recadinho todo dia às 8h.',
-    url: './'
-  })).catch((erro) => console.error('Falha no push de boas-vindas:', erro.statusCode || erro.message));
+  // Pequeno atraso ajuda no iOS logo após o subscribe
+  setTimeout(() => {
+    webpush.sendNotification(inscricao, JSON.stringify({
+      title: 'Thallyson ❤️ Isla',
+      body: 'Pronto! Os recadinhos estão ativados. Um beijo por notificação todo dia.',
+      url: '/?source=pwa'
+    }), { TTL: 60 * 60, urgency: 'high' }).catch((erro) => {
+      const codigo = erro.statusCode;
+      const corpo = erro.body ? String(erro.body).slice(0, 300) : '';
+      console.error('Falha no push de boas-vindas:', codigo || erro.message, corpo);
+      if (codigo === 403 || codigo === 404 || codigo === 410) {
+        const limpa = lerJson(subsPath, []).filter((item) => item.endpoint !== inscricao.endpoint);
+        salvarInscricoes(limpa);
+      }
+    });
+  }, 1500);
 });
 
 app.post('/api/unsubscribe', (req, res) => {
