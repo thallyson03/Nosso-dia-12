@@ -159,10 +159,12 @@ async function gerarComIA() {
   return texto;
 }
 
-export async function mensagemDoDia() {
+export async function mensagemDoDia({ forcar = false } = {}) {
   const dia = chaveDoDia();
   const cache = lerJson(cachePath, null);
-  if (cache?.dia === dia && cache?.texto) return { texto: cache.texto, origem: cache.origem || 'cache' };
+  if (!forcar && cache?.dia === dia && cache?.texto) {
+    return { texto: cache.texto, origem: cache.origem || 'cache' };
+  }
 
   let texto;
   let origem = 'ia';

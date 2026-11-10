@@ -18,6 +18,7 @@ const PORT = Number(process.env.PORT || 3008);
 const HOUR = Number(process.env.NOTIFY_HOUR || 8);
 const MINUTE = Number(process.env.NOTIFY_MINUTE || 0);
 const TZ = process.env.TZ || 'America/Sao_Paulo';
+const EXTRA_HOJE = process.env.NOTIFY_EXTRA_TODAY || '';
 
 function lerJson(caminho, fallback) {
   try {
@@ -69,13 +70,29 @@ function salvarInscricoes(lista) {
   writeFileSync(subsPath, JSON.stringify(lista, null, 2));
 }
 
-async function enviarParaTodos() {
+function parseHorarios(texto) {
+  return String(texto || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      const [h, m] = item.split(':').map((n) => Number(n));
+      return { h, m };
+    })
+    .filter(({ h, m }) => Number.isInteger(h) && Number.isInteger(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59);
+}
+
+function agoraNoFuso() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
+}
+
+async function enviarParaTodos({ forcar = false, rotulo = 'Push' } = {}) {
   const inscricoes = lerJson(subsPath, []);
-  const recado = await mensagemDoDia();
+  const recado = await mensagemDoDia({ forcar });
   const payload = JSON.stringify({
     title: 'Thallyson ❤️ Isla',
     body: recado.texto,
-    url: './'
+    url: '/?source=pwa'
   });
 
   const validas = [];
@@ -92,7 +109,30 @@ async function enviarParaTodos() {
   }
 
   salvarInscricoes(validas);
-  return { enviadas: validas.length, texto: recado.texto, origem: recado.origem };
+  const resultado = { enviadas: validas.length, texto: recado.texto, origem: recado.origem, rotulo };
+  console.log(`${rotulo}:`, resultado);
+  return resultado;
+}
+
+function agendarExtrasDeHoje(horarios) {
+  const agora = agoraNoFuso();
+  for (const { h, m } of horarios) {
+    const alvo = new Date(agora);
+    alvo.setHours(h, m, 0, 0);
+    const delay = alvo.getTime() - agora.getTime();
+    const label = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+    if (delay <= 0) {
+      console.log(`Extra de hoje ${label} já passou — ignorado.`);
+      continue;
+    }
+
+    console.log(`Extra de hoje agendado para ${label} (em ${Math.round(delay / 1000)}s)`);
+    setTimeout(() => {
+      enviarParaTodos({ forcar: true, rotulo: `Push extra ${label}` })
+        .catch((erro) => console.error(`Erro no push extra ${label}:`, erro));
+    }, delay);
+  }
 }
 
 const app = express();
@@ -161,14 +201,19 @@ app.post('/api/enviar', async (req, res) => {
 
 const cronExpr = `${MINUTE} ${HOUR} * * *`;
 cron.schedule(cronExpr, () => {
-  enviarParaTodos()
-    .then((resultado) => console.log('Push diário:', resultado))
+  enviarParaTodos({ rotulo: 'Push diário' })
     .catch((erro) => console.error('Erro no push diário:', erro));
 }, { timezone: TZ });
+
+const extrasHoje = parseHorarios(EXTRA_HOJE);
+agendarExtrasDeHoje(extrasHoje);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Nosso Dia em http://0.0.0.0:${PORT}`);
   console.log(`Recado diário às ${String(HOUR).padStart(2, '0')}:${String(MINUTE).padStart(2, '0')} (${TZ})`);
+  if (extrasHoje.length) {
+    console.log(`Extras de hoje: ${extrasHoje.map(({ h, m }) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`).join(', ')}`);
+  }
   console.log(iaConfigurada()
     ? 'Recados: IA gera um texto novo todo dia'
     : 'Recados: lista reserva (defina AI_API_KEY no Coolify para usar IA)');
