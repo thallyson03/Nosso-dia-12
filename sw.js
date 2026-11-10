@@ -1,4 +1,4 @@
-const CACHE = 'nosso-dia-v5';
+const CACHE = 'nosso-dia-v6';
 const PRECACHE = [
   '/style.css',
   '/script.js',

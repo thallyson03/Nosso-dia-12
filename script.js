@@ -117,29 +117,40 @@ function ehPWA() {
         new URLSearchParams(location.search).get('source') === 'pwa';
 }
 
-const NOTIF_ASKED_KEY = 'nosso-dia-notif-asked';
+const NOTIF_DISMISS_KEY = 'nosso-dia-notif-dismiss';
 const PWA_DISMISS_KEY = 'nosso-dia-pwa-dismiss';
 const pwaInstall = document.getElementById('pwa-install');
 const pwaInstallTexto = document.getElementById('pwa-install-texto');
 const btnInstall = document.getElementById('btn-install');
 const btnInstallFechar = document.getElementById('btn-install-fechar');
+const notifBanner = document.getElementById('notif-banner');
+const notifTexto = document.getElementById('notif-texto');
+const btnAtivarNotif = document.getElementById('btn-ativar-notif');
+const btnNotifFechar = document.getElementById('btn-notif-fechar');
 let promptInstalacao = null;
 let pedindoNotificacao = false;
 
-function jaPediuNotificacao() {
-    return localStorage.getItem(NOTIF_ASKED_KEY) === '1';
-}
-
-function marcarPedidoNotificacao() {
-    localStorage.setItem(NOTIF_ASKED_KEY, '1');
-}
+// Limpa flag antiga que podia travar o pedido sem o usuário ter visto o diálogo
+try { localStorage.removeItem('nosso-dia-notif-asked'); } catch {}
 
 function mostrarBannerPWA(texto, rotuloBotao) {
     if (!pwaInstall || ehPWA()) return;
     if (localStorage.getItem(PWA_DISMISS_KEY) === '1') return;
+    notifBanner?.classList.add('hidden');
     if (texto && pwaInstallTexto) pwaInstallTexto.textContent = texto;
     if (rotuloBotao && btnInstall) btnInstall.textContent = rotuloBotao;
     pwaInstall.classList.remove('hidden');
+}
+
+function mostrarBannerNotif(texto) {
+    if (!notifBanner) return;
+    pwaInstall?.classList.add('hidden');
+    if (texto && notifTexto) notifTexto.textContent = texto;
+    notifBanner.classList.remove('hidden');
+}
+
+function ocultarBannerNotif() {
+    notifBanner?.classList.add('hidden');
 }
 
 if ('serviceWorker' in navigator) {
@@ -159,16 +170,16 @@ window.addEventListener('appinstalled', () => {
     localStorage.setItem(PWA_DISMISS_KEY, '1');
     pwaInstall?.classList.add('hidden');
     promptInstalacao = null;
+    setTimeout(verificarNotificacoes, 400);
 });
 
 if (!ehPWA()) {
     if (ehIOS()) {
         mostrarBannerPWA(
-            'No iPhone/iPad: toque em Compartilhar e depois em “Adicionar à Tela de Início”.',
+            'No iPhone/iPad: toque em Compartilhar e depois em “Adicionar à Tela de Início”. Depois abra pelo ícone para ativar os recados.',
             'Ver como adicionar'
         );
     } else if (ehAndroid()) {
-        // Se o Chrome não disparar beforeinstallprompt, ainda orienta o usuário
         setTimeout(() => {
             if (!promptInstalacao) {
                 mostrarBannerPWA(
@@ -193,7 +204,7 @@ btnInstall?.addEventListener('click', async () => {
     }
 
     if (ehIOS() && pwaInstallTexto) {
-        pwaInstallTexto.textContent = 'Safari → botão Compartilhar (quadrado com seta) → role e toque em “Adicionar à Tela de Início” → Adicionar.';
+        pwaInstallTexto.textContent = 'Safari → Compartilhar → “Adicionar à Tela de Início” → Adicionar. Depois abra pelo ícone novo.';
         return;
     }
 
@@ -212,6 +223,7 @@ function pushDisponivel() {
 }
 
 async function registrarInscricao() {
+    await navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
     const chave = await fetch('/api/vapid-public-key').then((res) => {
         if (!res.ok) throw new Error('api');
         return res.json();
@@ -223,54 +235,95 @@ async function registrarInscricao() {
         applicationServerKey: urlBase64ParaUint8Array(chave.publicKey)
     });
 
-    await fetch('/api/subscribe', {
+    const resposta = await fetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(inscricao)
     });
+    if (!resposta.ok) throw new Error('subscribe');
 }
 
-async function pedirNotificacaoUmaVez() {
-    if (pedindoNotificacao || !pushDisponivel()) return;
-    if (ehIOS() && !ehPWA()) return;
-    if (Notification.permission === 'denied') {
-        marcarPedidoNotificacao();
+async function ativarNotificacoesComToque() {
+    if (pedindoNotificacao) return;
+    pedindoNotificacao = true;
+    btnAtivarNotif && (btnAtivarNotif.disabled = true);
+
+    try {
+        if (!pushDisponivel()) {
+            if (ehIOS() && !ehPWA()) {
+                mostrarBannerNotif('No iPhone, abra o Nosso Dia pelo ícone da tela inicial para liberar as notificações.');
+            } else {
+                mostrarBannerNotif('Este aparelho/navegador ainda não suporta os recados por notificação.');
+            }
+            return;
+        }
+
+        const permissao = await Notification.requestPermission();
+        if (permissao !== 'granted') {
+            if (notifTexto) {
+                notifTexto.textContent = permissao === 'denied'
+                    ? 'Permissão bloqueada. Em Ajustes → Nosso Dia → Notificações, ative e abra o app de novo.'
+                    : 'Sem permissão ainda. Toque de novo em “Ativar recadinhos”.';
+            }
+            return;
+        }
+
+        await registrarInscricao();
+        localStorage.setItem(NOTIF_DISMISS_KEY, '1');
+        ocultarBannerNotif();
+        if (notifTexto) notifTexto.textContent = 'Pronto! Os recadinhos estão ativados.';
+    } catch {
+        if (notifTexto) {
+            notifTexto.textContent = 'Não deu para ativar agora. Feche o app, abra pelo ícone da tela inicial e tente de novo.';
+        }
+        mostrarBannerNotif();
+    } finally {
+        pedindoNotificacao = false;
+        if (btnAtivarNotif) btnAtivarNotif.disabled = false;
+    }
+}
+
+async function verificarNotificacoes() {
+    if (localStorage.getItem(NOTIF_DISMISS_KEY) === '1' && Notification.permission === 'granted') {
+        if (pushDisponivel()) {
+            try { await registrarInscricao(); } catch {}
+        }
+        return;
+    }
+
+    if (!ehPWA() && ehIOS()) {
+        // No Safari normal o iOS não mostra o diálogo de push
+        return;
+    }
+
+    if (!pushDisponivel()) {
+        if (ehPWA()) {
+            mostrarBannerNotif('Este app ainda não conseguiu preparar as notificações. Feche e abra de novo pelo ícone.');
+        }
         return;
     }
 
     if (Notification.permission === 'granted') {
-        marcarPedidoNotificacao();
         try { await registrarInscricao(); } catch {}
+        localStorage.setItem(NOTIF_DISMISS_KEY, '1');
+        ocultarBannerNotif();
         return;
     }
 
-    if (jaPediuNotificacao()) return;
-
-    pedindoNotificacao = true;
-    try {
-        const permissao = await Notification.requestPermission();
-        marcarPedidoNotificacao();
-        if (permissao === 'granted') await registrarInscricao();
-    } catch {
-        marcarPedidoNotificacao();
-    } finally {
-        pedindoNotificacao = false;
+    if (Notification.permission === 'denied') {
+        mostrarBannerNotif('As notificações estão bloqueadas. Ative em Ajustes do celular e abra o app de novo.');
+        return;
     }
+
+    // iOS (e vários Android) só mostram o diálogo depois de um toque no botão
+    mostrarBannerNotif('Toque abaixo para permitir os recadinhos diários.');
 }
 
-function aguardarPrimeiroToque() {
-    const tentar = () => {
-        window.removeEventListener('pointerdown', tentar);
-        window.removeEventListener('keydown', tentar);
-        pedirNotificacaoUmaVez();
-    };
-    window.addEventListener('pointerdown', tentar, { once: true });
-    window.addEventListener('keydown', tentar, { once: true });
-}
+btnAtivarNotif?.addEventListener('click', ativarNotificacoesComToque);
 
-pedirNotificacaoUmaVez().then(() => {
-    if (!pushDisponivel()) return;
-    if (!jaPediuNotificacao() && Notification.permission === 'default') {
-        aguardarPrimeiroToque();
-    }
+btnNotifFechar?.addEventListener('click', () => {
+    localStorage.setItem(NOTIF_DISMISS_KEY, '1');
+    ocultarBannerNotif();
 });
+
+verificarNotificacoes();

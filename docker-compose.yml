@@ -9,7 +9,7 @@ services:
       TZ: America/Sao_Paulo
       NOTIFY_HOUR: "8"
       NOTIFY_MINUTE: "0"
-      NOTIFY_EXTRA_TODAY: "16:38,16:42"
+      NOTIFY_EXTRA_TODAY: "16:50,16:55,17:00,17:05"
       AI_PROVIDER: groq
       AI_MODEL: qwen/qwen3.8-27b
       VAPID_SUBJECT: mailto:nosso-dia@localhost
